@@ -1,0 +1,22 @@
+profiles:
+  - name: "Costa Rica 2026"
+    origins:
+      - AMS
+      - MAD
+      - CDG
+    destination: SJO
+    date_from: "2026-12-15"
+    date_to: "2027-02-02"
+    trip_duration_days: 43
+    window_step_days: 1
+    budget: 300
+    currency: EUR
+    passengers: 2
+    max_stops: 2
+    notify: espinozamarco70@gmail.com
+
+
+settings:
+  alert_threshold_pct: 10
+  runs_per_day: 1
+  price_history_days: 90

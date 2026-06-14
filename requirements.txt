@@ -1,0 +1,7 @@
+anthropic
+serpapi
+boto3
+python-dotenv
+pyyaml
+requests
+tenacity
