@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How the Flight Alert Agent Works</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0f1a; --surface: #111827; --border: #1e2d45;
+    --accent: #3b82f6; --accent2: #10b981; --accent3: #f59e0b; --accent4: #ec4899;
+    --text: #e2e8f0; --muted: #64748b;
+    --mono: 'DM Mono', monospace; --serif: 'Fraunces', serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; padding: 48px 24px; overflow-x: hidden; }
+  .page { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 52px; }
+  .eyebrow { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  h1 { font-family: var(--serif); font-weight: 300; font-size: clamp(28px, 5vw, 42px); line-height: 1.1; color: #fff; }
+  h1 em { font-style: italic; color: var(--accent); }
+  .subtitle { margin-top: 12px; font-size: 13px; color: #94a3b8; line-height: 1.7; max-width: 600px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .badge { font-size: 10px; letter-spacing: 0.08em; padding: 4px 12px; border-radius: 100px; border: 1px solid; }
+  .badge.blue  { border-color: #3b82f6; color: #93c5fd; background: #1d3460; }
+  .badge.green { border-color: #10b981; color: #6ee7b7; background: #0d2e22; }
+  .badge.amber { border-color: #f59e0b; color: #fcd34d; background: #2e1f06; }
+  .badge.pink  { border-color: #ec4899; color: #f9a8d4; background: #2d1120; }
+
+  /* pipeline */
+  .pipeline { display: flex; flex-direction: column; position: relative; }
+  .pipeline::before {
+    content: ''; position: absolute; left: 28px; top: 60px; bottom: 60px; width: 2px;
+    background: linear-gradient(to bottom, #3b82f6 0%, #10b981 30%, #14b8a6 50%, #f59e0b 70%, #8b5cf6 85%, #ec4899 100%);
+    opacity: 0.3;
+  }
+  .stage { display: grid; grid-template-columns: 58px 1fr; gap: 20px; align-items: start; padding: 0 0 36px 0; animation: fadeUp 0.5s ease both; }
+  .stage:nth-child(1){animation-delay:.05s} .stage:nth-child(2){animation-delay:.15s}
+  .stage:nth-child(3){animation-delay:.25s} .stage:nth-child(4){animation-delay:.35s}
+  .stage:nth-child(5){animation-delay:.45s} .stage:nth-child(6){animation-delay:.55s}
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+  .stage-icon { width: 58px; height: 58px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; position: relative; z-index: 1; }
+  .stage-icon.blue   { background: #1d3460; border: 1px solid #3b82f6; }
+  .stage-icon.green  { background: #0d2e22; border: 1px solid #10b981; }
+  .stage-icon.teal   { background: #0a2825; border: 1px solid #14b8a6; }
+  .stage-icon.amber  { background: #2e1f06; border: 1px solid #f59e0b; }
+  .stage-icon.purple { background: #1e1535; border: 1px solid #8b5cf6; }
+  .stage-icon.pink   { background: #2d1120; border: 1px solid #ec4899; }
+
+  .stage-body { padding-top: 6px; }
+  .stage-label { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .stage-title { font-family: var(--serif); font-size: 20px; font-weight: 600; color: #fff; margin-bottom: 10px; }
+  .stage-desc { font-size: 13px; line-height: 1.8; color: #94a3b8; margin-bottom: 14px; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 10px; letter-spacing: 0.05em; padding: 3px 10px; border-radius: 100px; border: 1px solid; }
+  .tag.blue   { border-color: #3b82f6; color: #93c5fd; background: #1d3460; }
+  .tag.green  { border-color: #10b981; color: #6ee7b7; background: #0d2e22; }
+  .tag.teal   { border-color: #14b8a6; color: #5eead4; background: #0a2825; }
+  .tag.amber  { border-color: #f59e0b; color: #fcd34d; background: #2e1f06; }
+  .tag.purple { border-color: #8b5cf6; color: #c4b5fd; background: #1e1535; }
+  .tag.pink   { border-color: #ec4899; color: #f9a8d4; background: #2d1120; }
+  .tag.gray   { border-color: #334155; color: #94a3b8; background: #1e293b; }
+
+  .card-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  @media (max-width: 520px) { .card-row { grid-template-columns: 1fr; } }
+  .mini-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .mini-card .mc-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .mini-card .mc-value { font-size: 13px; color: var(--text); line-height: 1.6; }
+  .mini-card .mc-value span { display: block; color: #94a3b8; font-size: 11px; margin-top: 2px; }
+
+  .analogy-box { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 16px 18px; margin-top: 14px; }
+  .analogy-box .ab-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .analogy-box .ab-text { font-size: 13px; color: #94a3b8; line-height: 1.8; }
+  .analogy-box .ab-text strong { color: var(--text); font-weight: 500; }
+
+  .analogy-box.green { border-left-color: #10b981; }
+  .analogy-box.green .ab-label { color: #10b981; }
+  .analogy-box.amber { border-left-color: #f59e0b; }
+  .analogy-box.amber .ab-label { color: #f59e0b; }
+  .analogy-box.purple { border-left-color: #8b5cf6; }
+  .analogy-box.purple .ab-label { color: #c4b5fd; }
+  .analogy-box.pink { border-left-color: #ec4899; }
+  .analogy-box.pink .ab-label { color: #f9a8d4; }
+  .analogy-box.teal { border-left-color: #14b8a6; }
+  .analogy-box.teal .ab-label { color: #5eead4; }
+
+  .example-email { background: #0d1117; border: 1px solid #1e2d45; border-radius: 10px; padding: 18px; margin-top: 14px; }
+  .email-meta { font-size: 11px; color: #475569; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #1e2d45; }
+  .email-meta span { color: #94a3b8; }
+  .email-subject { font-size: 13px; color: #f9a8d4; font-weight: 500; margin-bottom: 14px; }
+  .email-body { font-size: 12px; color: #94a3b8; line-height: 2; white-space: pre-line; }
+  .email-body .highlight { color: #6ee7b7; }
+  .email-body .link { color: #93c5fd; }
+
+  .arrow-row { display: flex; align-items: center; gap: 10px; margin: -20px 0 4px 78px; opacity: 0.5; }
+  .arrow-line { height: 1px; width: 32px; background: var(--muted); }
+  .arrow-text { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+  .decision { display: flex; align-items: center; gap: 14px; margin: 14px 0; }
+  .diamond { width: 32px; height: 32px; background: #2e1f06; border: 1.5px solid #f59e0b; transform: rotate(45deg); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .diamond-inner { transform: rotate(-45deg); font-size: 14px; }
+  .decision-text { font-size: 13px; color: #fcd34d; }
+  .decision-branches { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  .branch { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .branch-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .branch-dot.yes { background: #10b981; }
+  .branch-dot.no  { background: #ef4444; }
+
+  .footer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 48px; padding-top: 32px; border-top: 1px solid var(--border); }
+  @media (max-width: 560px) { .footer-grid { grid-template-columns: 1fr; } }
+  .footer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .footer-card .fc-icon { font-size: 20px; margin-bottom: 10px; }
+  .footer-card .fc-title { font-family: var(--serif); font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .footer-card .fc-body { font-size: 12px; color: #64748b; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Plain English Guide</p>
+    <h1>Your Personal<br><em>Flight Scout</em></h1>
+    <p class="subtitle">A small automated program that watches flight prices every night while you sleep — and only contacts you when it finds something worth booking.</p>
+    <div class="badges">
+      <span class="badge green">Runs automatically every night</span>
+      <span class="badge blue">No manual searching needed</span>
+      <span class="badge amber">Alerts only when prices are right</span>
+      <span class="badge pink">Books nothing without you</span>
+    </div>
+  </header>
+
+  <div class="pipeline">
+
+    <!-- STEP 1 -->
+    <div class="stage">
+      <div class="stage-icon blue">🗂️</div>
+      <div class="stage-body">
+        <p class="stage-label">Step 01</p>
+        <h2 class="stage-title">You tell it what you want</h2>
+        <p class="stage-desc">Once — and only once — you set your travel preferences. The agent remembers everything from that point on. You never need to touch it again unless your plans change.</p>
+        <div class="card-row">
+          <div class="mini-card">
+            <p class="mc-label">Your trip</p>
+            <p class="mc-value">Costa Rica 🌴<span>December 18 → January 30 · 2 people</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">Your budget</p>
+            <p class="mc-value">€500 per person<span>Alert if it gets close too (within 10%)</span></p>
+          </div>
+        </div>
+        <div class="analogy-box" style="margin-top:14px">
+          <p class="ab-label">Think of it like…</p>
+          <p class="ab-text">Telling a friend exactly what kind of apartment you're looking for and asking them to call you only when something good comes up. <strong>You set the rules once, they do the watching.</strong></p>
+        </div>
+        <div class="tags" style="margin-top:14px">
+          <span class="tag blue">Your destination</span>
+          <span class="tag blue">Your dates</span>
+          <span class="tag blue">Your budget</span>
+          <span class="tag blue">Your email</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-row"><div class="arrow-line"></div><p class="arrow-text">every night at 2am</p></div>
+
+    <!-- STEP 2 -->
+    <div class="stage">
+      <div class="stage-icon green">⏰</div>
+      <div class="stage-body">
+        <p class="stage-label">Step 02</p>
+        <h2 class="stage-title">It wakes up every night at 2 AM</h2>
+        <p class="stage-desc">Without you doing anything, the agent automatically starts up every night at 2 AM Amsterdam time. It runs on the internet — not on your computer — so your laptop can be off and it still works.</p>
+        <div class="analogy-box green">
+          <p class="ab-label">Think of it like…</p>
+          <p class="ab-text">A night-shift worker who clocks in while you sleep, does their job, and leaves a note on your desk if they found something. <strong>You wake up to results, not effort.</strong></p>
+        </div>
+        <div class="tags" style="margin-top:14px">
+          <span class="tag green">Every night · 2:00 AM</span>
+          <span class="tag green">Runs on the internet, not your PC</span>
+          <span class="tag gray">Emails you if something breaks</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-row"><div class="arrow-line"></div><p class="arrow-text">checks multiple airports</p></div>
+
+    <!-- STEP 3 -->
+    <div class="stage">
+      <div class="stage-icon teal">🗺️</div>
+      <div class="stage-body">
+        <p class="stage-label">Step 03</p>
+        <h2 class="stage-title">It checks flights from nearby airports</h2>
+        <p class="stage-desc">Rather than only looking at Amsterdam, the agent simultaneously checks three departure airports near you. Sometimes a cheaper flight leaves from Brussels or Düsseldorf — it catches those too.</p>
+        <div class="card-row">
+          <div class="mini-card">
+            <p class="mc-label">Amsterdam</p>
+            <p class="mc-value">AMS · Schiphol<span>~2 hours from Maastricht</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">Brussels</p>
+            <p class="mc-value">BRU · Zaventem<span>~1 hour from Maastricht</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">Düsseldorf</p>
+            <p class="mc-value">DUS · Düsseldorf<span>~1.5 hours from Maastricht</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">Also checks</p>
+            <p class="mc-value">Different date windows<span>Dec 18, Jan 1, Jan 15 departures</span></p>
+          </div>
+        </div>
+        <div class="analogy-box teal">
+          <p class="ab-label">Think of it like…</p>
+          <p class="ab-text">A travel agent who checks three train stations at once instead of just your local one — <strong>because the cheapest flight might not leave from the obvious airport.</strong></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-row"><div class="arrow-line"></div><p class="arrow-text">pulls live prices</p></div>
+
+    <!-- STEP 4 -->
+    <div class="stage">
+      <div class="stage-icon amber">🔍</div>
+      <div class="stage-body">
+        <p class="stage-label">Step 04</p>
+        <h2 class="stage-title">It searches Google Flights for real prices</h2>
+        <p class="stage-desc">The agent connects to Google Flights to get live, up-to-date prices — the same ones you'd see if you searched yourself. It only looks at official airlines like KLM, United, Lufthansa and Iberia. No third-party booking sites.</p>
+        <div class="analogy-box amber">
+          <p class="ab-label">Think of it like…</p>
+          <p class="ab-text">Having someone open Google Flights on your behalf every night, search all the combinations, and write down every price they see. <strong>Same data, zero effort from you.</strong></p>
+        </div>
+        <div class="tags" style="margin-top:14px">
+          <span class="tag amber">Google Flights prices</span>
+          <span class="tag amber">KLM · United · Lufthansa · Iberia</span>
+          <span class="tag gray">Official airlines only</span>
+          <span class="tag gray">Saves results for comparison later</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-row"><div class="arrow-line"></div><p class="arrow-text">AI reviews the results</p></div>
+
+    <!-- STEP 5 -->
+    <div class="stage">
+      <div class="stage-icon purple">🤖</div>
+      <div class="stage-body">
+        <p class="stage-label">Step 05</p>
+        <h2 class="stage-title">An AI decides if it's worth telling you</h2>
+        <p class="stage-desc">This is the smart part. Instead of just checking if a number is below €500, an AI reviews all the results like a knowledgeable friend would — considering the full picture before deciding whether to bother you.</p>
+
+        <div class="card-row">
+          <div class="mini-card">
+            <p class="mc-label">It considers</p>
+            <p class="mc-value">Is the price good enough?<span>At or within 10% of your budget</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">It considers</p>
+            <p class="mc-value">Is the routing sensible?<span>No 9-hour layovers or overnight stopovers</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">It considers</p>
+            <p class="mc-value">Is the price trending down?<span>Compares to the last 7 days of prices</span></p>
+          </div>
+          <div class="mini-card">
+            <p class="mc-label">It considers</p>
+            <p class="mc-value">Is it actually the best option?<span>Picks the best deal across all airports</span></p>
+          </div>
+        </div>
+
+        <div class="decision">
+          <div class="diamond"><div class="diamond-inner">?</div></div>
+          <div>
+            <p class="decision-text">Is this genuinely worth your attention?</p>
+            <div class="decision-branches">
+              <div class="branch"><div class="branch-dot yes"></div><span style="color:#6ee7b7">Yes → sends you an email right away</span></div>
+              <div class="branch"><div class="branch-dot no"></div><span style="color:#fca5a5">No → stays quiet, tries again tomorrow</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="analogy-box purple">
+          <p class="ab-label">Think of it like…</p>
+          <p class="ab-text">A well-travelled friend who doesn't just forward you every vaguely cheap flight — they actually look at it, think about it, and only call you when they'd genuinely book it themselves. <strong>No spam, just signal.</strong></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-row"><div class="arrow-line"></div><p class="arrow-text">sends you an email</p></div>
+
+    <!-- STEP 6 -->
+    <div class="stage">
+      <div class="stage-icon pink">📬</div>
+      <div class="stage-body">
+        <p class="stage-label">Step 06</p>
+        <h2 class="stage-title">You get an email — and you decide</h2>
+        <p class="stage-desc">When a good deal is found, you get a clear email with everything you need to make a decision. The agent never books anything on your behalf. It just finds the deal and hands it to you.</p>
+
+        <div class="example-email">
+          <div class="email-meta">From: <span>flightalert@gmail.com</span> &nbsp;·&nbsp; To: <span>you@gmail.com</span></div>
+          <div class="email-subject">🚨 Deal found · AMS→SJO · € 387/person · KLM</div>
+          <div class="email-body">✈️  Amsterdam → San José, Costa Rica
+    Departure  : Dec 18, 2026 at 10:20
+    Arrival    : Dec 18, 2026 at 21:10
+    Airline    : <span class="highlight">KLM</span>
+    Route      : 1 stop · 11h total
+    Layover    : Atlanta Airport — 2h
+
+💶  Price
+    Per person : <span class="highlight">€ 387</span>
+    2 passengers : <span class="highlight">€ 774 total</span>
+    Your budget  : € 500 / person  ✓
+
+📈  Price trend  : Falling (down €43 this week)
+🧠  Why now?     : Best price seen in 7 days, clean routing, no overnight stops.
+
+<span class="link">→ Book directly on klm.com</span>
+
+This alert was generated automatically. Book directly
+with the airline — do not use third-party aggregators.</div>
+        </div>
+
+        <div class="analogy-box pink">
+          <p class="ab-label">Think of it like…</p>
+          <p class="ab-text">A note slipped under your door saying <strong>"found a great deal, here's the link — but it's your call."</strong> It never touches your wallet.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer-grid">
+    <div class="footer-card">
+      <div class="fc-icon">🔐</div>
+      <p class="fc-title">Your data stays yours</p>
+      <p class="fc-body">The agent only stores anonymised price data for comparison purposes. It never stores your payment details, passport info, or personal data of any kind.</p>
+    </div>
+    <div class="footer-card">
+      <div class="fc-icon">💸</div>
+      <p class="fc-title">Practically free to run</p>
+      <p class="fc-body">The agent runs on free or near-free services. The AI analysis costs less than €0.50 a month at this usage. You only pay if you choose to upgrade for more airports.</p>
+    </div>
+    <div class="footer-card">
+      <div class="fc-icon">🛑</div>
+      <p class="fc-title">It never books for you</p>
+      <p class="fc-body">The agent finds deals and tells you about them. Every booking decision — and every click — is yours. It cannot and will not purchase anything on your behalf.</p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
