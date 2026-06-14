@@ -1,0 +1,22 @@
+profiles:
+  - name: "You - Costa Rica"
+    origins:
+      - AMS
+      - BRU
+      - DUS
+    destination: SJO
+    date_from: "2026-12-18"
+    date_to: "2027-01-30"
+    trip_duration_days: 14
+    window_step_days: 14        
+    budget: 500
+    currency: EUR
+    passengers: 2
+    max_stops: 2
+    notify: espinozamarco70@gmail.com
+
+
+settings:
+  alert_threshold_pct: 10
+  runs_per_day: 1
+  price_history_days: 90
