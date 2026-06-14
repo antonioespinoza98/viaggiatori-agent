@@ -1,15 +1,15 @@
 profiles:
-  - name: "You - Costa Rica"
+  - name: "Costa Rica 2026"
     origins:
       - AMS
-      - BRU
-      - DUS
+      - MAD
+      - CDG
     destination: SJO
-    date_from: "2026-12-18"
-    date_to: "2027-01-30"
-    trip_duration_days: 14
-    window_step_days: 14        
-    budget: 500
+    date_from: "2026-12-15"
+    date_to: "2027-02-02"
+    trip_duration_days: 43
+    window_step_days: 1
+    budget: 300
     currency: EUR
     passengers: 2
     max_stops: 2

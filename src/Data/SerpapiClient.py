@@ -17,8 +17,7 @@ def _map_stops(max_stops: int) -> int:
     return _STOPS_MAP.get(max_stops, 0)
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def search_flights(
+def _build_params(
     origins: list[str],
     destination: str,
     outbound_date: str,
@@ -26,8 +25,9 @@ def search_flights(
     passengers: int,
     currency: str,
     max_stops: int,
+    **extra,
 ) -> dict:
-    params = {
+    return {
         "engine": "google_flights",
         "departure_id": ",".join(origins),
         "arrival_id": destination,
@@ -40,13 +40,49 @@ def search_flights(
         "type": 1,
         "sort_by": 2,
         "no_cache": True,
+        **extra,
     }
 
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def search_flights(
+    origins: list[str],
+    destination: str,
+    outbound_date: str,
+    return_date: str,
+    passengers: int,
+    currency: str,
+    max_stops: int,
+) -> dict:
+    params = _build_params(
+        origins, destination, outbound_date, return_date, passengers, currency, max_stops
+    )
     result = _client.search(params)
     return dict(result)
 
 
-def extract_flights(raw: dict) -> list[dict]:
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def search_return_flights(
+    origins: list[str],
+    destination: str,
+    outbound_date: str,
+    return_date: str,
+    passengers: int,
+    currency: str,
+    max_stops: int,
+    departure_token: str,
+) -> dict:
+    """Second-step SerpAPI call: given the departure_token from an outbound
+    itinerary, returns the matching return-leg itineraries."""
+    params = _build_params(
+        origins, destination, outbound_date, return_date, passengers, currency, max_stops,
+        departure_token=departure_token,
+    )
+    result = _client.search(params)
+    return dict(result)
+
+
+def extract_flights(raw: dict, passengers: int) -> list[dict]:
     best = raw.get("best_flights", [])
     other = raw.get("other_flights", [])
     all_flights = best + other
@@ -60,9 +96,12 @@ def extract_flights(raw: dict) -> list[dict]:
         first_leg = legs[0]
         last_leg = legs[-1]
         layovers = itinerary.get("layovers", [])
+        price = itinerary.get("price")
 
         extracted.append({
-            "price": itinerary.get("price"),
+            # SerpAPI returns the total price for `passengers` adults;
+            # normalize to per-person to match the rest of the pipeline.
+            "price": round(price / passengers, 2) if price else None,
             "currency": raw.get("search_parameters", {}).get("currency", "EUR"),
             "total_duration_minutes": itinerary.get("total_duration"),
             "type": itinerary.get("type"),
@@ -84,3 +123,39 @@ def extract_flights(raw: dict) -> list[dict]:
         })
 
     return extracted
+
+
+def get_return_flight(profile: dict, best_flight: dict, flights: list[dict]) -> dict | None:
+    """Given the outbound flight Claude picked, fetch its return leg.
+
+    Matches `best_flight` back to one of the originally extracted `flights`
+    (which carry the `departure_token` and the search window's dates),
+    then makes the second SerpAPI call to retrieve the corresponding return
+    itinerary. Returns None if no match or no return itinerary is found.
+    """
+    match = next(
+        (
+            f for f in flights
+            if f.get("departure_airport") == best_flight.get("departure_airport")
+            and f.get("departure_time") == best_flight.get("departure_time")
+            and f.get("arrival_airport") == best_flight.get("arrival_airport")
+            and f.get("arrival_time") == best_flight.get("arrival_time")
+            and f.get("price") == best_flight.get("price")
+        ),
+        None,
+    )
+    if not match or not match.get("departure_token"):
+        return None
+
+    raw = search_return_flights(
+        origins=profile["origins"],
+        destination=profile["destination"],
+        outbound_date=match["_outbound_date"],
+        return_date=match["_return_date"],
+        passengers=profile["passengers"],
+        currency=profile["currency"],
+        max_stops=profile["max_stops"],
+        departure_token=match["departure_token"],
+    )
+    returns = extract_flights(raw, profile["passengers"])
+    return returns[0] if returns else None

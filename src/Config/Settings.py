@@ -29,6 +29,11 @@ RUNS_PER_DAY: int = _config["settings"]["runs_per_day"]
 PRICE_HISTORY_DAYS: int = _config["settings"]["price_history_days"]
 
 
+# --- SerpAPI ---
+
+SERPAPI_KEY: str = os.environ["SERPAPI_KEY"]
+
+
 # --- Anthropic ---
 
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]

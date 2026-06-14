@@ -2,7 +2,7 @@ name: Flight Agent
 
 on:
   schedule:
-    - cron: "0 1 * * *"
+    - cron: "0 2 * * 2,3"
   workflow_dispatch:
 
 jobs:
@@ -31,4 +31,4 @@ jobs:
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python src/Main.py
+        run: python src/main.py

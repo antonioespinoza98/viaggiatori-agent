@@ -3,8 +3,9 @@ import sys
 
 from Config.Settings import PROFILES
 from Data.SearchOrchestrator import run_all_profiles
+from Data.SerpapiClient import get_return_flight
 from Intelligence.Analyzer import analyze
-from Notifications.GmailNotifier import send_alert
+from Intelligence.Notifications.GmailNotifier import send_alert
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,7 +37,9 @@ def main() -> None:
 
         if analysis.get("alert") and analysis.get("best_flight"):
             logger.info("[%s] Alert triggered — sending notification", profile_name)
-            send_alert(profile, analysis["best_flight"], analysis)
+            best_flight = analysis["best_flight"]
+            return_flight = get_return_flight(profile, best_flight, flights)
+            send_alert(profile, best_flight, return_flight, analysis)
         else:
             logger.info(
                 "[%s] No alert — %s",

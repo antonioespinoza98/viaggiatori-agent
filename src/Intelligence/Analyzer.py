@@ -12,7 +12,15 @@ logger = logging.getLogger(__name__)
 _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
+def _strip_internal_fields(flight: dict) -> dict:
+    return {
+        k: v for k, v in flight.items()
+        if k != "departure_token" and not k.startswith("_")
+    }
+
+
 def _build_user_message(profile: dict, flights: list[dict], price_history: list[dict]) -> str:
+    visible_flights = [_strip_internal_fields(f) for f in flights]
     return f"""
 Profile:
   name: {profile["name"]}
@@ -25,7 +33,7 @@ Profile:
   alert_threshold_pct: {ALERT_THRESHOLD_PCT}
 
 Flights found today:
-{json.dumps(flights, indent=2, ensure_ascii=False)}
+{json.dumps(visible_flights, indent=2, ensure_ascii=False)}
 
 Price history (last 7 days):
 {json.dumps(price_history, indent=2, ensure_ascii=False)}

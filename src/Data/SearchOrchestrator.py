@@ -43,7 +43,10 @@ def _search_window(
             currency=profile["currency"],
             max_stops=profile["max_stops"],
         )
-        flights = extract_flights(raw)
+        flights = extract_flights(raw, profile["passengers"])
+        for flight in flights:
+            flight["_outbound_date"] = outbound_date
+            flight["_return_date"] = return_date
         logger.info(
             "[%s] %s → %s | %s → %s | %d results",
             profile["name"],

@@ -37,23 +37,29 @@ def _build_subject(flight: dict) -> str:
     return f"🚨 Deal found · {departure}→{arrival} · {currency} {price}/person · {airlines}"
 
 
-def _build_body(profile: dict, flight: dict, analysis: dict) -> str:
-    price = flight["price"]
-    currency = flight["currency"]
-    total_cost = analysis.get("total_cost")
-    passengers = profile["passengers"]
-    budget = profile["budget"]
+def _build_leg_section(label: str, flight: dict) -> str:
     airlines = ", ".join(flight["airlines"])
     stops = flight["stops"]
     stops_label = "Nonstop" if stops == 0 else f"{stops} stop{'s' if stops > 1 else ''}"
     duration = _format_duration(flight.get("total_duration_minutes", 0))
     layovers = _format_layovers(flight.get("layovers", []))
+
+    return f"""{label}  {flight["departure_airport"]} → {flight["arrival_airport"]}
+    Departure : {flight["departure_time"]}
+    Arrival   : {flight["arrival_time"]}
+    Airlines  : {airlines}
+    Routing   : {stops_label} · {duration} total
+    Layovers  : {layovers}"""
+
+
+def _build_body(profile: dict, flight: dict, return_flight: dict | None, analysis: dict) -> str:
+    price = flight["price"]
+    currency = flight["currency"]
+    total_cost = analysis.get("total_cost")
+    passengers = profile["passengers"]
+    budget = profile["budget"]
     trend = analysis.get("trend", "unknown").replace("_", " ").capitalize()
     reason = analysis.get("reason", "")
-    departure_airport = flight["departure_airport"]
-    arrival_airport = flight["arrival_airport"]
-    departure_time = flight["departure_time"]
-    arrival_time = flight["arrival_time"]
 
     over_budget = price > budget
     budget_note = (
@@ -61,16 +67,19 @@ def _build_body(profile: dict, flight: dict, analysis: dict) -> str:
         if over_budget else ""
     )
 
+    outbound_section = _build_leg_section("✈️  Outbound", flight)
+    return_section = (
+        _build_leg_section("✈️  Return  ", return_flight)
+        if return_flight else "✈️  Return\n    (return flight details unavailable)"
+    )
+
     return f"""
 Flight Alert — {profile["name"]}
 {"=" * 48}
 
-✈️  {departure_airport} → {arrival_airport}
-    Departure : {departure_time}
-    Arrival   : {arrival_time}
-    Airlines  : {airlines}
-    Routing   : {stops_label} · {duration} total
-    Layovers  : {layovers}
+{outbound_section}
+
+{return_section}
 
 💶  Price
     Per person : {currency} {price}
@@ -87,10 +96,10 @@ with the airline — do not use third-party aggregators.
 """.strip()
 
 
-def send_alert(profile: dict, flight: dict, analysis: dict) -> None:
+def send_alert(profile: dict, flight: dict, return_flight: dict | None, analysis: dict) -> None:
     recipient = profile["notify"]
     subject = _build_subject(flight)
-    body = _build_body(profile, flight, analysis)
+    body = _build_body(profile, flight, return_flight, analysis)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
