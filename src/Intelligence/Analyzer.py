@@ -40,6 +40,16 @@ def _parse_response(content: str) -> dict:
     return json.loads(cleaned)
 
 
+def _no_alert_result(reason: str) -> dict:
+    return {
+        "alert": False,
+        "best_flight": None,
+        "reason": reason,
+        "trend": "insufficient_data",
+        "total_cost": None,
+    }
+
+
 def analyze(profile: dict, flights: list[dict]) -> dict:
     origin = profile["origins"][0] if len(profile["origins"]) == 1 else "MULTI"
     destination = profile["destination"]
@@ -54,19 +64,42 @@ def analyze(profile: dict, flights: list[dict]) -> dict:
 
     user_message = _build_user_message(profile, flights, price_history)
 
+    # Cache the static system prompt + few-shot prefix so repeated calls
+    # (one per profile, per run) reuse it instead of re-processing it.
+    last_example = FEW_SHOT_EXAMPLES[-1]
     messages = [
-        *FEW_SHOT_EXAMPLES,
+        *FEW_SHOT_EXAMPLES[:-1],
+        {
+            "role": last_example["role"],
+            "content": [
+                {
+                    "type": "text",
+                    "text": last_example["content"],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
         {"role": "user", "content": user_message},
     ]
 
     logger.info("[%s] Sending %d flights to Claude for analysis", profile_name, len(flights))
 
-    response = _client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    )
+    try:
+        response = _client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=messages,
+        )
+    except anthropic.APIError:
+        logger.exception("[%s] Claude API call failed", profile_name)
+        return _no_alert_result("Claude API call failed.")
 
     raw_content = response.content[0].text
     logger.debug("[%s] Claude raw response: %s", profile_name, raw_content)
@@ -75,13 +108,7 @@ def analyze(profile: dict, flights: list[dict]) -> dict:
         result = _parse_response(raw_content)
     except json.JSONDecodeError:
         logger.error("[%s] Failed to parse Claude response: %s", profile_name, raw_content)
-        return {
-            "alert": False,
-            "best_flight": None,
-            "reason": "Claude response could not be parsed.",
-            "trend": "insufficient_data",
-            "total_cost": None,
-        }
+        return _no_alert_result("Claude response could not be parsed.")
 
     logger.info(
         "[%s] Analysis complete — alert=%s trend=%s reason=%s",

@@ -28,7 +28,7 @@ def _format_layovers(layovers: list[dict]) -> str:
     return "\n      ".join(parts)
 
 
-def _build_subject(profile: dict, flight: dict) -> str:
+def _build_subject(flight: dict) -> str:
     price = flight["price"]
     currency = flight["currency"]
     airlines = ", ".join(flight["airlines"])
@@ -89,7 +89,7 @@ with the airline — do not use third-party aggregators.
 
 def send_alert(profile: dict, flight: dict, analysis: dict) -> None:
     recipient = profile["notify"]
-    subject = _build_subject(profile, flight)
+    subject = _build_subject(flight)
     body = _build_body(profile, flight, analysis)
 
     msg = MIMEMultipart("alternative")

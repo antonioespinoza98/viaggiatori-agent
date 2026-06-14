@@ -7,9 +7,9 @@ from Config.Settings import SERPAPI_KEY
 _client = serpapi.Client(api_key=SERPAPI_KEY)
 
 _STOPS_MAP = {
-    0: 0,
-    1: 1,
-    2: 2,
+    0: 1,
+    1: 2,
+    2: 3,
 }
 
 

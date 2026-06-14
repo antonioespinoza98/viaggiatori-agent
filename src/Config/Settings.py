@@ -29,12 +29,6 @@ RUNS_PER_DAY: int = _config["settings"]["runs_per_day"]
 PRICE_HISTORY_DAYS: int = _config["settings"]["price_history_days"]
 
 
-# --- Amadeus ---
-
-AMADEUS_API_KEY: str = os.environ["AMADEUS_API_KEY"]
-AMADEUS_API_SECRET: str = os.environ["AMADEUS_API_SECRET"]
-
-
 # --- Anthropic ---
 
 ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
